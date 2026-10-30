@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sudoku Duel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #E9EFF6;
+    --grid: #C9D6E6;
+    --ink: #1B2A4A;
+    --soft: #5B6B88;
+    --me: #2D5BFF;
+    --opp: #D6336C;
+    --cell: #FFFFFF;
+    --bad: #FFE1E6;
+    --ok: #1F9D63;
+    --r: 10px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    min-height: 100vh;
+    font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+    color: var(--ink);
+    background-color: var(--paper);
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 24px 24px;
+    background-position: -1px -1px;
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  :focus-visible { outline: 3px solid var(--me); outline-offset: 2px; }
+  .wrap { max-width: 560px; margin: 0 auto; padding: 20px 16px 48px; }
+
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 2rem; font-weight: 800; letter-spacing: -0.03em; margin: 0; font-variation-settings: 'opsz' 96; }
+  h1 span { display: inline-block; transform: rotate(-4deg); }
+  .linkish { background: none; border: 0; padding: 4px 0; color: var(--soft); text-decoration: underline; text-underline-offset: 3px; }
+
+  .panel { background: var(--cell); border: 2px solid var(--ink); border-radius: var(--r); padding: 24px; margin-top: 24px; box-shadow: 4px 4px 0 var(--ink); }
+  .panel h2 { margin: 0 0 8px; font-size: 1.4rem; }
+  .panel p { margin: 0 0 16px; color: var(--soft); line-height: 1.5; }
+  label { display: block; font-weight: 600; margin-bottom: 6px; }
+  input[type=text] { width: 100%; font: inherit; font-size: 1.1rem; padding: 10px 12px; border: 2px solid var(--ink); border-radius: 8px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+  .btn { border: 2px solid var(--ink); background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 8px; font-weight: 600; }
+  .btn.ghost { background: #fff; color: var(--ink); }
+  .btn.danger { background: #fff; color: var(--opp); border-color: var(--opp); }
+  .btn:active { transform: translate(1px, 1px); }
+  .seg { display: inline-flex; border: 2px solid var(--ink); border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; background: #fff; padding: 8px 14px; }
+  .seg button[aria-pressed=true] { background: var(--ink); color: #fff; }
+
+  /* Versus bar: the one loud element */
+  .versus { margin-top: 20px; }
+  .names { display: flex; justify-content: space-between; font-weight: 800; font-size: 1.15rem; gap: 8px; }
+  .names .meN { color: var(--me); }
+  .names .oppN { color: var(--opp); text-align: right; }
+  .names small { display: block; font-weight: 400; font-size: .85rem; color: var(--soft); }
+  .tug { position: relative; height: 18px; margin-top: 6px; border: 2px solid var(--ink); border-radius: 999px; background: #fff; overflow: hidden; }
+  .tug i { position: absolute; top: 0; bottom: 0; transition: width .35s ease; }
+  .tug .a { left: 0; background: var(--me); }
+  .tug .b { right: 0; background: var(--opp); }
+  .tug::after { content: ''; position: absolute; left: 50%; top: -2px; bottom: -2px; border-left: 2px dashed var(--ink); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); margin-left: 6px; vertical-align: middle; }
+  .dot.off { background: #A9B4C6; }
+
+  .board { margin: 18px auto 0; display: grid; grid-template-columns: repeat(9, 1fr); width: min(100%, 468px); aspect-ratio: 1; border: 3px solid var(--ink); border-radius: 6px; background: var(--ink); gap: 1px; box-shadow: 5px 5px 0 var(--me); }
+  .board.lost { box-shadow: 5px 5px 0 var(--opp); }
+  .c { background: var(--cell); border: 0; padding: 0; display: grid; place-items: center; font-size: clamp(1.1rem, 5.4vw, 1.75rem); font-weight: 400; color: var(--me); }
+  .c.given { color: var(--ink); font-weight: 800; cursor: default; }
+  .c:nth-child(9n+3), .c:nth-child(9n+6) { margin-right: 2px; }
+  .c.br { margin-bottom: 2px; }
+  .c.peer { background: #EEF3FF; }
+  .c.same { background: #D7E2FF; }
+  .c.sel { background: #BFD0FF; }
+  .c.bad { background: var(--bad); color: var(--opp); }
+  .c.rev { color: var(--soft); }
+
+  .pad { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; width: min(100%, 468px); margin: 16px auto 0; }
+  .pad button { border: 2px solid var(--ink); background: #fff; border-radius: 8px; padding: 10px 0; font-size: 1.3rem; font-weight: 600; }
+  .pad button.done { opacity: .35; }
+  .pad .erase { font-size: 1rem; }
+
+  .actions { display: flex; justify-content: space-between; align-items: center; width: min(100%, 468px); margin: 18px auto 0; gap: 10px; flex-wrap: wrap; }
+  .status { color: var(--soft); }
+
+  .invite { display: flex; gap: 8px; margin-top: 8px; }
+  .invite input { flex: 1; font-size: .95rem; }
+  .code { font-size: 2.6rem; font-weight: 800; letter-spacing: .12em; color: var(--me); margin: 4px 0 12px; }
+
+  .overlay { position: fixed; inset: 0; background: rgba(27, 42, 74, .55); display: grid; place-items: center; padding: 16px; z-index: 5; }
+  .overlay .panel { max-width: 420px; width: 100%; margin: 0; text-align: center; }
+  .overlay h2 { font-size: 2.2rem; letter-spacing: -0.02em; }
+  .overlay.win h2 { color: var(--me); }
+  .overlay.lose h2 { color: var(--opp); }
+  .score { font-size: 1.1rem; margin-bottom: 16px; }
+  .overlay .row { justify-content: center; }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 8px; z-index: 9; }
+  [hidden] { display: none !important; }
+  @media (prefers-reduced-motion: reduce) { .tug i { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Sudoku <span>Duel</span></h1>
+    <button class="linkish" id="renameBtn" hidden>Change name</button>
+  </header>
+
+  <!-- Name entry (first visit or rename) -->
+  <section class="panel" id="nameView" hidden>
+    <h2 id="nameTitle">What should your opponent call you?</h2>
+    <p id="nameHint">You can change this later.</p>
+    <form id="nameForm">
+      <label for="nameInput">Your name</label>
+      <input type="text" id="nameInput" maxlength="20" autocomplete="nickname" required>
+      <div class="row"><button class="btn" type="submit">Save name</button><button class="btn ghost" type="button" id="nameCancel" hidden>Cancel</button></div>
+    </form>
+  </section>
+
+  <!-- Home -->
+  <section class="panel" id="homeView" hidden>
+    <h2>Race a friend through the same puzzle</h2>
+    <p>Start a game, send the link to one other person, and whoever fills the grid correctly first wins.</p>
+    <label>Difficulty</label>
+    <div class="seg" id="diffHome" role="group" aria-label="Difficulty"></div>
+    <div class="row"><button class="btn" id="createBtn">Start a game</button></div>
+  </section>
+
+  <!-- Waiting for opponent -->
+  <section class="panel" id="waitView" hidden>
+    <h2>Waiting for your opponent</h2>
+    <p>Send them this link. The puzzle starts as soon as they join.</p>
+    <div class="code" id="roomCode"></div>
+    <div class="invite">
+      <input type="text" id="inviteUrl" readonly aria-label="Invite link">
+      <button class="btn" id="copyBtn">Copy link</button>
+    </div>
+  </section>
+
+  <!-- Error -->
+  <section class="panel" id="errView" hidden>
+    <h2 id="errTitle">Can't join this game</h2>
+    <p id="errMsg"></p>
+    <div class="row"><button class="btn" id="homeBtn">Start your own game</button></div>
+  </section>
+
+  <!-- Game -->
+  <section id="gameView" hidden>
+    <div class="versus">
+      <div class="names">
+        <div class="meN"><span id="meName"></span><small id="meStat"></small></div>
+        <div class="oppN"><span id="oppName"></span><span class="dot" id="oppDot"></span><small id="oppStat"></small></div>
+      </div>
+      <div class="tug" aria-hidden="true"><i class="a" id="tugA"></i><i class="b" id="tugB"></i></div>
+    </div>
+    <div class="board" id="board" role="grid" aria-label="Sudoku board"></div>
+    <div class="pad" id="pad"></div>
+    <div class="actions">
+      <span class="status" id="status"></span>
+      <span>
+        <button class="btn ghost" id="inviteAgain" title="Copy invite link">Copy link</button>
+        <button class="btn danger" id="concedeBtn">I give up</button>
+      </span>
+    </div>
+  </section>
+</div>
+
+<div class="overlay" id="confirmView" hidden>
+  <div class="panel">
+    <h2>Give up this round?</h2>
+    <p>Your opponent gets the win and the solution is shown to both of you.</p>
+    <div class="row"><button class="btn danger" id="concedeYes">Yes, I give up</button><button class="btn ghost" id="concedeNo">Keep playing</button></div>
+  </div>
+</div>
+
+<div class="overlay" id="resultView" hidden>
+  <div class="panel">
+    <h2 id="resTitle"></h2>
+    <p id="resMsg"></p>
+    <div class="score" id="resScore"></div>
+    <label>Next round difficulty</label>
+    <div class="seg" id="diffRes" role="group" aria-label="Difficulty"></div>
+    <div class="row"><button class="btn" id="restartBtn">Play again</button><button class="btn ghost" id="viewBoard">See the board</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+let clientId = store.get('sd_client');
+if (!clientId) { clientId = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now()); store.set('sd_client', clientId); }
+let myName = store.get('sd_name');
+let roomId = new URLSearchParams(location.search).get('room');
+let difficulty = 'medium';
+let state = null, sel = -1, ws = null, pending = [], resultDismissedRound = -1, lastRound = 0;
+
+const views = ['nameView', 'homeView', 'waitView', 'errView', 'gameView'];
+function show(id) { views.forEach(v => $(v).hidden = v !== id); $('renameBtn').hidden = !myName || id === 'nameView'; }
+function toast(t) { const el = $('toast'); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 1800); }
+function inviteLink() { return `${location.origin}/?room=${state?.room || roomId}`; }
+
+// ---------- connection ----------
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}`);
+  ws.onopen = () => {
+    if (roomId) ws.send(JSON.stringify({ type: 'join', room: roomId, clientId, name: myName }));
+    pending.splice(0).forEach(m => ws.send(m));
+  };
+  ws.onmessage = (e) => {
+    const m = JSON.parse(e.data);
+    if (m.type === 'error') {
+      if (m.code === 'replaced') { ws.onclose = null; }
+      $('errTitle').textContent = m.code === 'full' ? 'This game is full' : m.code === 'replaced' ? 'Open in another tab' : "Can't find this game";
+      $('errMsg').textContent = m.message;
+      return show('errView');
+    }
+    if (m.type === 'state') onState(m);
+  };
+  ws.onclose = () => setTimeout(connect, 1200);
+}
+function sendMsg(o) {
+  const s = JSON.stringify({ ...o, clientId });
+  if (ws && ws.readyState === 1) ws.send(s); else pending.push(s);
+}
+
+// ---------- name ----------
+function askName(isRename) {
+  $('nameTitle').textContent = isRename ? 'Change your name' : 'What should your opponent call you?';
+  $('nameHint').textContent = isRename ? 'Your opponent sees the new name right away.' : 'You can change this later.';
+  $('nameInput').value = myName || '';
+  $('nameCancel').hidden = !isRename;
+  show('nameView');
+  $('nameInput').focus();
+}
+$('nameForm').onsubmit = (e) => {
+  e.preventDefault();
+  const n = $('nameInput').value.trim();
+  if (!n) return;
+  const first = !myName;
+  myName = n; store.set('sd_name', n);
+  if (state) { sendMsg({ type: 'rename', name: n }); onState(state); toast('Name saved'); }
+  else if (first) boot();
+  else route();
+};
+$('nameCancel').onclick = () => state ? onState(state) : route();
+$('renameBtn').onclick = () => askName(true);
+
+// ---------- difficulty pickers ----------
+function seg(el) {
+  el.innerHTML = '';
+  ['easy', 'medium', 'hard'].forEach(d => {
+    const b = document.createElement('button');
+    b.textContent = d[0].toUpperCase() + d.slice(1);
+    b.setAttribute('aria-pressed', d === difficulty);
+    b.onclick = () => { difficulty = d; seg($('diffHome')); seg($('diffRes')); };
+    el.appendChild(b);
+  });
+}
+
+// ---------- home / create ----------
+$('createBtn').onclick = () => sendMsg({ type: 'create', name: myName, difficulty });
+$('homeBtn').onclick = () => { history.replaceState(null, '', '/'); roomId = null; state = null; route(); };
+async function copy(text) {
+  try { await navigator.clipboard.writeText(text); toast('Invite link copied'); }
+  catch { $('inviteUrl').select(); toast('Select and copy the link'); }
+}
+$('copyBtn').onclick = () => copy(inviteLink());
+$('inviteAgain').onclick = () => copy(inviteLink());
+
+// ---------- board ----------
+const boardEl = $('board');
+for (let i = 0; i < 81; i++) {
+  const b = document.createElement('button');
+  b.className = 'c' + (Math.floor(i / 9) % 3 === 2 && i < 72 ? ' br' : '');
+  b.setAttribute('role', 'gridcell');
+  b.onclick = () => { sel = i; render(); };
+  boardEl.appendChild(b);
+}
+const padEl = $('pad');
+[1,2,3,4,5,6,7,8,9,0].forEach(n => {
+  const b = document.createElement('button');
+  b.textContent = n || 'Erase';
+  if (!n) b.className = 'erase';
+  b.onclick = () => input(n);
+  padEl.appendChild(b);
+});
+
+function input(v) {
+  if (!state || state.status !== 'playing' || sel < 0 || state.puzzle[sel]) return;
+  state.board[sel] = v; // optimistic
+  render();
+  sendMsg({ type: 'move', index: sel, value: v });
+}
+
+document.addEventListener('keydown', (e) => {
+  if ($('gameView').hidden || !$('confirmView').hidden || !$('resultView').hidden) return;
+  if (e.target.tagName === 'INPUT') return;
+  if (/^[1-9]$/.test(e.key)) return input(+e.key);
+  if (['Backspace', 'Delete', '0'].includes(e.key)) return input(0);
+  const mv = { ArrowUp: -9, ArrowDown: 9, ArrowLeft: -1, ArrowRight: 1 }[e.key];
+  if (mv !== undefined) {
+    e.preventDefault();
+    if (sel < 0) sel = 40;
+    else {
+      const r = Math.floor(sel / 9), c = sel % 9;
+      if (mv === -1 && c === 0 || mv === 1 && c === 8 || mv === -9 && r === 0 || mv === 9 && r === 8) return;
+      sel += mv;
+    }
+    render(); boardEl.children[sel].focus();
+  }
+});
+
+function conflicts(b) {
+  const bad = new Set();
+  const groups = [];
+  for (let k = 0; k < 9; k++) {
+    groups.push([...Array(9)].map((_, j) => k * 9 + j));
+    groups.push([...Array(9)].map((_, j) => j * 9 + k));
+    const br = Math.floor(k / 3) * 3, bc = (k % 3) * 3;
+    groups.push([...Array(9)].map((_, j) => (br + Math.floor(j / 3)) * 9 + bc + j % 3));
+  }
+  for (const g of groups) {
+    const seen = {};
+    for (const i of g) if (b[i]) (seen[b[i]] ||= []).push(i);
+    for (const v in seen) if (seen[v].length > 1) seen[v].forEach(i => bad.add(i));
+  }
+  return bad;
+}
+
+function render() {
+  const s = state; if (!s || !s.puzzle) return;
+  const finished = s.status === 'finished';
+  const b = s.board;
+  const bad = conflicts(b);
+  const selR = Math.floor(sel / 9), selC = sel % 9, selBox = sel >= 0 ? Math.floor(selR / 3) * 3 + Math.floor(selC / 3) : -1;
+  const selV = sel >= 0 ? b[sel] : 0;
+  const counts = Array(10).fill(0);
+  for (let i = 0; i < 81; i++) {
+    const el = boardEl.children[i];
+    const r = Math.floor(i / 9), c = i % 9, box = Math.floor(r / 3) * 3 + Math.floor(c / 3);
+    let v = b[i], rev = false;
+    if (finished && !v && s.solution) { v = s.solution[i]; rev = true; }
+    if (b[i]) counts[b[i]]++;
+    el.textContent = v || '';
+    const cls = ['c'];
+    if (r % 3 === 2 && r < 8) cls.push('br');
+    if (s.puzzle[i]) cls.push('given');
+    if (sel >= 0 && (r === selR || c === selC || box === selBox)) cls.push('peer');
+    if (selV && b[i] === selV) cls.push('same');
+    if (i === sel) cls.push('sel');
+    if (bad.has(i) && !s.puzzle[i]) cls.push('bad');
+    if (rev || (finished && b[i] && s.solution && b[i] !== s.solution[i])) cls.push(rev ? 'rev' : 'bad');
+    el.className = cls.join(' ');
+    el.setAttribute('aria-label', `Row ${r + 1}, column ${c + 1}${v ? ', ' + v : ', empty'}`);
+    el.disabled = finished;
+  }
+  [...padEl.children].forEach((btn, k) => { if (k < 9) btn.classList.toggle('done', counts[k + 1] >= 9); btn.disabled = finished; });
+  boardEl.classList.toggle('lost', finished && !s.youWon);
+}
+
+// ---------- state ----------
+function onState(s) {
+  const firstState = !state;
+  state = s;
+  roomId = s.room;
+  if (location.search !== `?room=${s.room}`) history.replaceState(null, '', `/?room=${s.room}`);
+  if (s.difficulty) difficulty = s.difficulty;
+  if (s.round !== lastRound) { sel = -1; lastRound = s.round; }
+
+  if (s.status === 'waiting') {
+    $('roomCode').textContent = s.room;
+    $('inviteUrl').value = inviteLink();
+    show('waitView');
+    return;
+  }
+  show('gameView');
+  $('meName').textContent = s.me.name + ' (you)';
+  $('meStat').textContent = `${s.me.filled}/${s.empties} filled · ${s.me.wins} ${s.me.wins === 1 ? 'win' : 'wins'}`;
+  const o = s.opponent;
+  $('oppName').textContent = o ? o.name : 'Opponent';
+  $('oppDot').className = 'dot' + (o && o.online ? '' : ' off');
+  $('oppDot').title = o && o.online ? 'Online' : 'Offline';
+  $('oppStat').textContent = o ? `${o.filled}/${s.empties} filled · ${o.wins} ${o.wins === 1 ? 'win' : 'wins'}` : '';
+  $('tugA').style.width = (s.empties ? s.me.filled / s.empties * 50 : 0) + '%';
+  $('tugB').style.width = (s.empties && o ? o.filled / s.empties * 50 : 0) + '%';
+  $('concedeBtn').hidden = s.status !== 'playing';
+  $('inviteAgain').hidden = !!o;
+  $('status').textContent = s.status === 'playing'
+    ? `${cap(s.difficulty)} · round ${s.round}${o && !o.online ? ' · opponent offline' : ''}`
+    : (s.youWon ? 'You won this round' : `${s.winner} won this round`);
+  render();
+
+  if (s.status === 'finished' && resultDismissedRound !== s.round) showResult();
+  else if (s.status !== 'finished') $('resultView').hidden = true;
+}
+const cap = (t) => t ? t[0].toUpperCase() + t.slice(1) : '';
+
+function showResult() {
+  const s = state, o = s.opponent;
+  const v = $('resultView');
+  v.className = 'overlay ' + (s.youWon ? 'win' : 'lose');
+  $('resTitle').textContent = s.youWon ? 'You win!' : `${s.winner} wins`;
+  $('resMsg').textContent = s.reason === 'concede'
+    ? (s.youWon ? `${o?.name || 'Your opponent'} gave up.` : 'You gave up this round. The solution is on the board.')
+    : (s.youWon ? 'You solved the puzzle first.' : `${s.winner} solved the puzzle first.`);
+  $('resScore').textContent = `${s.me.name} ${s.me.wins} – ${o ? o.wins : 0} ${o ? o.name : ''}`;
+  seg($('diffRes'));
+  v.hidden = false;
+}
+$('viewBoard').onclick = () => { resultDismissedRound = state.round; $('resultView').hidden = true; $('status').innerHTML = ''; addReplay(); };
+function addReplay() {
+  const b = document.createElement('button');
+  b.className = 'btn'; b.textContent = 'Play again';
+  b.onclick = () => { resultDismissedRound = -1; showResult(); };
+  $('status').appendChild(b);
+}
+$('restartBtn').onclick = () => { resultDismissedRound = -1; sendMsg({ type: 'restart', difficulty }); };
+$('concedeBtn').onclick = () => { $('confirmView').hidden = false; $('concedeNo').focus(); };
+$('concedeNo').onclick = () => $('confirmView').hidden = true;
+$('concedeYes').onclick = () => { $('confirmView').hidden = true; sendMsg({ type: 'concede' }); };
+
+// ---------- routing ----------
+function route() {
+  if (!myName) return askName(false);
+  if (state) return onState(state);
+  if (roomId) return; // waiting for server
+  seg($('diffHome'));
+  show('homeView');
+}
+function boot() { route(); if (!ws) connect(); else if (roomId && ws.readyState === 1) ws.send(JSON.stringify({ type: 'join', room: roomId, clientId, name: myName })); }
+if (myName) boot(); else askName(false);
+</script>
+</body>
