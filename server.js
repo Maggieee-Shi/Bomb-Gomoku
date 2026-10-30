@@ -3,100 +3,98 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
-const { generate } = require('./sudoku');
 
 const PORT = process.env.PORT || 3000;
+const N = 15; // board size
 const PUBLIC = path.join(__dirname, 'public');
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml' };
+const INDEX = path.join(PUBLIC, 'index.html');
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
   if (url.pathname === '/health') { res.writeHead(200); return res.end('ok'); }
-  let file = url.pathname === '/' ? '/index.html' : url.pathname;
-  file = path.normalize(file).replace(/^(\.\.[/\\])+/, '');
-  const full = path.join(PUBLIC, file);
-  if (!full.startsWith(PUBLIC)) { res.writeHead(403); return res.end(); }
-  fs.readFile(full, (err, data) => {
-    if (err) {
-      // SPA fallback
-      return fs.readFile(path.join(PUBLIC, 'index.html'), (e2, d2) => {
-        res.writeHead(e2 ? 404 : 200, { 'Content-Type': TYPES['.html'] });
-        res.end(d2 || 'Not found');
-      });
-    }
-    res.writeHead(200, { 'Content-Type': TYPES[path.extname(full)] || 'application/octet-stream' });
-    res.end(data);
+  fs.readFile(INDEX, (err, data) => {
+    res.writeHead(err ? 500 : 200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+    res.end(data || 'Server error');
   });
 });
 
 /**
  * room = {
- *   id, ownerId, status: 'waiting'|'playing'|'finished', difficulty,
- *   puzzle, solution, winnerId, reason, round, lastActive,
- *   players: Map<clientId, { id, name, board, ws, wins }>
+ *   id, status: 'waiting'|'playing'|'finished',
+ *   board: number[N*N] (0 empty, 1 black, 2 white), turn: 1|2, lastMove,
+ *   winnerId, reason: 'five'|'concede'|'draw', winLine: number[],
+ *   round, blackId, lastActive, players: Map<clientId, { id, name, ws, wins }>
  * }
  */
 const rooms = new Map();
+const ALPH = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 function newRoomId() {
   let id;
-  do { id = crypto.randomBytes(4).toString('base64url').replace(/[-_]/g, '').slice(0, 6).toUpperCase(); }
-  while (id.length < 6 || rooms.has(id));
+  do { id = Array.from(crypto.randomBytes(6), b => ALPH[b % ALPH.length]).join(''); } while (rooms.has(id));
   return id;
 }
-
-function cleanName(n) {
-  return String(n || '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 20) || 'Player';
-}
+const cleanName = (n) => String(n || '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 20) || 'Player';
+const online = (p) => !!(p && p.ws && p.ws.readyState === 1);
+const colorOf = (room, id) => (room.blackId === id ? 1 : 2);
+const other = (room, id) => [...room.players.values()].find(p => p.id !== id);
 
 function startRound(room) {
-  const { puzzle, solution } = generate(room.difficulty);
-  room.puzzle = puzzle;
-  room.solution = solution;
+  const ids = [...room.players.keys()];
+  // Round 1: the host plays black (moves first). After that, colors swap each round.
+  if (room.round === 0) room.blackId = ids[0];
+  else room.blackId = ids.find(id => id !== room.blackId);
+  room.board = new Array(N * N).fill(0);
+  room.turn = 1;
+  room.lastMove = -1;
   room.status = 'playing';
   room.winnerId = null;
   room.reason = null;
+  room.winLine = [];
   room.round += 1;
-  room.startedAt = Date.now();
-  for (const p of room.players.values()) p.board = puzzle.slice();
 }
 
-function filledCount(room, p) {
-  if (!room.puzzle) return 0;
-  let n = 0;
-  for (let i = 0; i < 81; i++) if (!room.puzzle[i] && p.board[i]) n++;
-  return n;
+function findFive(board, idx) {
+  const color = board[idx];
+  const r0 = Math.floor(idx / N), c0 = idx % N;
+  for (const [dr, dc] of [[0, 1], [1, 0], [1, 1], [1, -1]]) {
+    const line = [idx];
+    for (const s of [1, -1]) {
+      let r = r0 + dr * s, c = c0 + dc * s;
+      while (r >= 0 && r < N && c >= 0 && c < N && board[r * N + c] === color) {
+        line.push(r * N + c);
+        r += dr * s; c += dc * s;
+      }
+    }
+    if (line.length >= 5) return line;
+  }
+  return null;
 }
 
-function emptyCount(room) {
-  return room.puzzle ? room.puzzle.filter(v => !v).length : 0;
-}
-
-function send(ws, msg) {
-  if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
-}
+function send(ws, msg) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); }
 
 function broadcast(room) {
   room.lastActive = Date.now();
   for (const me of room.players.values()) {
-    const opp = [...room.players.values()].find(p => p.id !== me.id);
+    const opp = other(room, me.id);
+    const myColor = room.status === 'waiting' ? 1 : colorOf(room, me.id);
     send(me.ws, {
       type: 'state',
       room: room.id,
-      isOwner: room.ownerId === me.id,
+      size: N,
       status: room.status,
-      difficulty: room.difficulty,
       round: room.round,
-      puzzle: room.puzzle,
-      board: me.board,
-      empties: emptyCount(room),
-      me: { name: me.name, wins: me.wins, filled: filledCount(room, me) },
-      opponent: opp ? { name: opp.name, wins: opp.wins, filled: filledCount(room, opp), online: !!(opp.ws && opp.ws.readyState === 1) } : null,
+      board: room.board || null,
+      turn: room.turn,
+      lastMove: room.lastMove,
+      myColor,
+      yourTurn: room.status === 'playing' && room.turn === myColor,
+      me: { name: me.name, wins: me.wins },
+      opponent: opp ? { name: opp.name, wins: opp.wins, online: online(opp) } : null,
       winner: room.winnerId ? room.players.get(room.winnerId)?.name : null,
       youWon: room.winnerId ? room.winnerId === me.id : null,
       reason: room.reason,
-      // reveal solution only after the round ends
-      solution: room.status === 'finished' ? room.solution : null,
+      winLine: room.winLine || [],
     });
   }
 }
@@ -104,8 +102,7 @@ function broadcast(room) {
 const wss = new WebSocketServer({ server });
 
 wss.on('connection', (ws) => {
-  let room = null;
-  let me = null;
+  let room = null, me = null;
 
   ws.on('message', (raw) => {
     let msg;
@@ -115,96 +112,82 @@ wss.on('connection', (ws) => {
     switch (msg.type) {
       case 'create': {
         if (!clientId) return;
-        const id = newRoomId();
-        room = { id, ownerId: clientId, status: 'waiting', difficulty: ['easy', 'medium', 'hard'].includes(msg.difficulty) ? msg.difficulty : 'medium', round: 0, players: new Map(), lastActive: Date.now() };
-        rooms.set(id, room);
-        me = { id: clientId, name: cleanName(msg.name), board: [], ws, wins: 0 };
+        room = { id: newRoomId(), status: 'waiting', round: 0, players: new Map(), lastActive: Date.now() };
+        rooms.set(room.id, room);
+        me = { id: clientId, name: cleanName(msg.name), ws, wins: 0 };
         room.players.set(clientId, me);
-        broadcast(room);
-        break;
+        return broadcast(room);
       }
       case 'join': {
         const r = rooms.get(String(msg.room || '').toUpperCase());
-        if (!r) return send(ws, { type: 'error', code: 'not_found', message: 'That game does not exist (it may have expired).' });
+        if (!r) return send(ws, { type: 'error', code: 'not_found', message: 'That game does not exist. It may have expired.' });
         if (!clientId) return;
         const existing = r.players.get(clientId);
         if (existing) {
-          // reconnect to own seat
           if (existing.ws && existing.ws !== ws) send(existing.ws, { type: 'error', code: 'replaced', message: 'You opened this game in another tab.' });
           existing.ws = ws;
           if (msg.name) existing.name = cleanName(msg.name);
           me = existing;
         } else {
           if (r.players.size >= 2) return send(ws, { type: 'error', code: 'full', message: 'This game already has two players.' });
-          me = { id: clientId, name: cleanName(msg.name), board: [], ws, wins: 0 };
+          me = { id: clientId, name: cleanName(msg.name), ws, wins: 0 };
           r.players.set(clientId, me);
           if (r.status === 'waiting') startRound(r);
         }
         room = r;
-        broadcast(room);
-        break;
+        return broadcast(room);
       }
       case 'rename': {
         if (!room || !me) return;
         me.name = cleanName(msg.name);
-        broadcast(room);
-        break;
+        return broadcast(room);
       }
       case 'move': {
         if (!room || !me || room.status !== 'playing') return;
-        const i = msg.index | 0, v = msg.value | 0;
-        if (i < 0 || i > 80 || v < 0 || v > 9 || room.puzzle[i]) return;
-        me.board[i] = v;
-        if (me.board.every((x, k) => x === room.solution[k])) {
-          room.status = 'finished';
-          room.winnerId = me.id;
-          room.reason = 'solved';
-          me.wins += 1;
+        const color = colorOf(room, me.id);
+        const i = msg.index | 0;
+        if (room.turn !== color || i < 0 || i >= N * N || room.board[i]) return;
+        room.board[i] = color;
+        room.lastMove = i;
+        const line = findFive(room.board, i);
+        if (line) {
+          room.status = 'finished'; room.winnerId = me.id; room.reason = 'five'; room.winLine = line; me.wins += 1;
+        } else if (room.board.every(Boolean)) {
+          room.status = 'finished'; room.reason = 'draw';
+        } else {
+          room.turn = color === 1 ? 2 : 1;
         }
-        broadcast(room);
-        break;
+        return broadcast(room);
       }
       case 'concede': {
         if (!room || !me || room.status !== 'playing') return;
-        const opp = [...room.players.values()].find(p => p.id !== me.id);
+        const opp = other(room, me.id);
         if (!opp) return;
-        room.status = 'finished';
-        room.winnerId = opp.id;
-        room.reason = 'concede';
-        opp.wins += 1;
-        broadcast(room);
-        break;
+        room.status = 'finished'; room.winnerId = opp.id; room.reason = 'concede'; opp.wins += 1;
+        return broadcast(room);
       }
       case 'restart': {
         if (!room || !me || room.status !== 'finished' || room.players.size < 2) return;
-        if (['easy', 'medium', 'hard'].includes(msg.difficulty)) room.difficulty = msg.difficulty;
         startRound(room);
-        broadcast(room);
-        break;
+        return broadcast(room);
       }
     }
   });
 
   ws.on('close', () => {
-    if (room && me && me.ws === ws) {
-      me.ws = null;
-      broadcast(room);
-    }
+    if (room && me && me.ws === ws) { me.ws = null; broadcast(room); }
   });
 });
 
-// Drop rooms idle for 6 hours
+// Drop rooms idle for 6 hours with nobody connected
 setInterval(() => {
   const cutoff = Date.now() - 6 * 3600e3;
   for (const [id, r] of rooms) {
-    const anyOnline = [...r.players.values()].some(p => p.ws && p.ws.readyState === 1);
-    if (!anyOnline && r.lastActive < cutoff) rooms.delete(id);
+    if (r.lastActive < cutoff && ![...r.players.values()].some(online)) rooms.delete(id);
   }
 }, 10 * 60e3).unref();
 
 // Keep connections alive behind proxies
-setInterval(() => {
-  for (const c of wss.clients) if (c.readyState === 1) c.ping();
-}, 25e3).unref();
+setInterval(() => { for (const c of wss.clients) if (c.readyState === 1) c.ping(); }, 25e3).unref();
 
-server.listen(PORT, () => console.log(`Sudoku Duel listening on :${PORT}`));
+server.listen(PORT, () => console.log(`Gomoku listening on :${PORT}`));
