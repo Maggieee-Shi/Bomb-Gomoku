@@ -95,23 +95,42 @@
   .overlay .row { justify-content: center; }
   .score { font-weight: 900; font-size: 1.15rem; margin-bottom: 6px; }
   .spookBox { text-align: center; }
-  .spookBox svg { width: 120px; height: 110px; display: block; margin: 0 auto 4px; }
+  .spookBox h2 { margin-bottom: 6px; }
+  .spookBox p { margin: 0 0 10px; }
+  .duel { display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 6px; margin: 4px 0 6px; }
+  .side { display: grid; justify-items: center; gap: 2px; }
+  .spookFace { width: 86px; height: 80px; }
+  .hand { font-size: 3.4rem; line-height: 1.1; display: inline-block; transform-origin: 50% 90%; }
+  .mirror { transform: scaleX(-1); }
+  .who { font-weight: 900; }
+  .vs { font-size: .8rem; color: #8A8AA8; padding-bottom: 46px; }
   .float { animation: bob 1.6s ease-in-out infinite; }
   @keyframes bob { 50% { transform: translateY(-6px); } }
-  .picks { display: flex; justify-content: center; gap: 10px; margin-top: 14px; }
+  .shake { animation: shake .5s ease-in-out infinite; }
+  .shake.fast { animation-duration: .25s; }
+  .mirror.shake { animation-name: shakeM; }
+  @keyframes shake { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-16px) rotate(-12deg); } }
+  @keyframes shakeM { 0%, 100% { transform: scaleX(-1) translateY(0) rotate(0); } 50% { transform: scaleX(-1) translateY(-16px) rotate(-12deg); } }
+  .pop { animation: pop .35s ease-out; }
+  .mirror.pop { animation-name: popM; }
+  @keyframes pop { 0% { transform: scale(.4); } 70% { transform: scale(1.25); } 100% { transform: scale(1); } }
+  @keyframes popM { 0% { transform: scaleX(-1) scale(.4); } 70% { transform: scaleX(-1) scale(1.25); } 100% { transform: scaleX(-1) scale(1); } }
+  .banner { min-height: 2.6em; display: grid; place-items: center; font-weight: 800; font-size: 1.05rem; }
+  .banner.result { font-family: 'Press Start 2P', monospace; font-size: 1.15rem; line-height: 1.5; }
+  .banner.win { color: var(--grass-dark); }
+  .banner.lose { color: var(--boom); }
+  .banner.tie { color: #6C5CE7; }
+  .banner small { display: block; font-family: 'Nunito', sans-serif; font-size: .9rem; font-weight: 800; color: var(--ink); margin-top: 4px; }
+  .picks { display: flex; justify-content: center; gap: 10px; margin-top: 8px; }
   .pick { display: grid; gap: 4px; justify-items: center; width: 92px; padding: 10px 0 8px; background: var(--white); border: 3px solid var(--ink); border-radius: 14px; box-shadow: 0 4px 0 var(--ink); font-weight: 900; }
   .pick span { font-size: 2rem; line-height: 1; }
   .pick:disabled { opacity: .45; cursor: default; }
   .pick.chosen { background: #FFF5C9; opacity: 1; }
-  .rpsResult { min-height: 3.2em; margin-top: 14px; font-weight: 800; line-height: 1.5; }
-  .rpsResult .big { font-family: 'Press Start 2P', monospace; font-size: .9rem; display: block; margin-top: 6px; }
-  .rpsResult.win .big { color: var(--grass-dark); }
-  .rpsResult.lose .big { color: var(--boom); }
   .shine { animation: shine 1.4s ease-in-out infinite; }
   @keyframes shine { 50% { opacity: .35; } }
   .twinkle { transform-box: fill-box; transform-origin: center; animation: twinkle 1.4s ease-in-out infinite; }
   @keyframes twinkle { 0%, 100% { transform: scale(.6) rotate(0deg); } 50% { transform: scale(1.15) rotate(45deg); } }
-  @media (prefers-reduced-motion: reduce) { .float, .shine, .twinkle { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .float, .shine, .twinkle, .shake, .pop { animation: none; } }
   .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--white); padding: 10px 16px; border-radius: 10px; z-index: 9; font-weight: 800; }
   [hidden] { display: none !important; }
   @media (max-width: 420px) { .brand h1 { font-size: .85rem; } .brand svg { width: 52px; } }
@@ -232,15 +251,26 @@
 
 <div class="overlay" id="rpsView" hidden>
   <div class="box spookBox" role="dialog" aria-labelledby="rpsTitle">
-    <svg class="float" viewBox="-1.3 -1.3 2.6 2.5" aria-hidden="true"><use href="#spook"/></svg>
     <h2 id="rpsTitle">Spook appears!</h2>
-    <p id="rpsIntro">Beat me at rock-paper-scissors and your stone gets a shield. Lose, and your turn is over.</p>
+    <p id="rpsIntro">Win and your stone gets a shield. Lose, and your turn is over.</p>
+    <div class="duel">
+      <div class="side">
+        <div class="hand shake" id="youHand">✊</div>
+        <div class="who">You</div>
+      </div>
+      <div class="vs px">VS</div>
+      <div class="side">
+        <svg class="spookFace float" viewBox="-1.3 -1.3 2.6 2.5" aria-hidden="true"><use href="#spook"/></svg>
+        <div class="hand shake mirror" id="spookHand">✊</div>
+        <div class="who">Spook</div>
+      </div>
+    </div>
+    <div class="banner" id="rpsBanner" aria-live="polite">Rock… paper… scissors…</div>
     <div class="picks">
       <button class="pick" data-pick="rock"><span>✊</span>Rock</button>
       <button class="pick" data-pick="paper"><span>✋</span>Paper</button>
       <button class="pick" data-pick="scissors"><span>✌️</span>Scissors</button>
     </div>
-    <div class="rpsResult" id="rpsResult" aria-live="polite"></div>
   </div>
 </div>
 
@@ -345,7 +375,6 @@ for (let i = 0; i < N; i++) {
 }
 el('rect', { x: 0, y: 0, width: N - 1, height: N - 1, fill: 'none', stroke: '#6B4A22', 'stroke-width': 0.09 }, svg);
 for (const [x, y] of [[3, 3], [11, 3], [7, 7], [3, 11], [11, 11]]) el('circle', { cx: x, cy: y, r: 0.12, fill: '#6B4A22' }, svg);
-const scarG = el('g', {}, svg);
 const stonesG = el('g', {}, svg);
 const markG = el('g', {}, svg);
 const hitG = el('g', {}, svg);
@@ -421,12 +450,6 @@ function render() {
   ghosts.forEach((g, i) => g.setAttribute('fill', s.board[i] ? 'none' : stoneFill(s.myColor)));
   svg.classList.toggle('canplay', !!s.yourTurn && !animating && !s.challenge);
   drawCursor();
-}
-
-// scorch marks where bombs went off this game
-function scorch(ev) {
-  const { top, left, size } = ev.area;
-  el('rect', { x: left - .45, y: top - .45, width: size - 1 + .9, height: size - 1 + .9, rx: .4, fill: '#8B5A2B', opacity: .18 }, scarG);
 }
 
 // ---------- Nimbo bomb animation ----------
@@ -515,33 +538,49 @@ function describe(ev) {
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 // ---------- Spook's rock-paper-scissors ----------
+let pickedAt = 0;
+function rpsWaiting() {
+  // both hands pump while Spook waits for you to throw
+  for (const id of ['youHand', 'spookHand']) { const h = $(id); h.textContent = '✊'; h.className = 'hand shake' + (id === 'spookHand' ? ' mirror' : ''); }
+  const b = $('rpsBanner'); b.className = 'banner'; b.textContent = 'Rock… paper… scissors…';
+  document.querySelectorAll('.pick').forEach(x => { x.disabled = false; x.classList.remove('chosen'); });
+}
 document.querySelectorAll('.pick').forEach(b => b.onclick = () => {
   if (!state?.challenge?.forYou || animating) return;
   document.querySelectorAll('.pick').forEach(x => { x.disabled = true; x.classList.toggle('chosen', x === b); });
-  $('rpsResult').className = 'rpsResult'; $('rpsResult').textContent = 'Spook is thinking…';
+  const you = $('youHand');
+  you.textContent = EMOJI[b.dataset.pick]; you.className = 'hand pop';
+  $('spookHand').classList.add('fast');
+  $('rpsBanner').textContent = 'Shoot!';
+  pickedAt = performance.now();
   sendMsg({ type: 'rps', pick: b.dataset.pick });
 });
 function openRps(ch) {
   if (rpsOpenFor === ch.id) return;
   rpsOpenFor = ch.id;
-  $('rpsTitle').textContent = 'Spook appears!';
-  $('rpsResult').className = 'rpsResult'; $('rpsResult').textContent = '';
-  document.querySelectorAll('.pick').forEach(x => { x.disabled = false; x.classList.remove('chosen'); });
+  rpsWaiting();
   $('rpsView').hidden = false;
   document.querySelector('.pick').focus();
 }
 async function rpsReveal(r) {
   animating = true;
-  const res = $('rpsResult');
-  const head = r.outcome === 'tie' ? "It's a tie! Pick again." : r.outcome === 'win' ? 'You win! Your stone is shielded.' : 'Spook wins. Your turn is over.';
-  res.className = 'rpsResult ' + r.outcome;
-  res.innerHTML = `You ${EMOJI[r.pick]} ${cap(r.pick)} vs Spook ${EMOJI[r.ghost]} ${cap(r.ghost)}<span class="big"></span>`;
-  res.querySelector('.big').textContent = head;
+  // let Spook's hand shake a moment longer before the reveal
+  if (!reduceMotion) await sleep(Math.max(0, 800 - (performance.now() - pickedAt)));
+  const sp = $('spookHand');
+  sp.textContent = EMOJI[r.ghost]; sp.className = 'hand mirror pop';
+  const b = $('rpsBanner');
+  const title = r.outcome === 'tie' ? 'Tie!' : r.outcome === 'win' ? 'You win!' : 'You lose!';
+  const sub = r.outcome === 'tie' ? `Spook threw ${r.ghost} too. Go again.`
+    : r.outcome === 'win' ? `${cap(r.pick)} beats ${r.ghost}. Your stone is shielded.`
+    : `${cap(r.ghost)} beats ${r.pick}. Your turn is over.`;
+  b.className = 'banner result ' + r.outcome;
+  b.textContent = title;
+  const small = document.createElement('small'); small.textContent = sub; b.appendChild(small);
   if (r.outcome === 'tie') {
-    await sleep(900);
-    document.querySelectorAll('.pick').forEach(x => { x.disabled = false; x.classList.remove('chosen'); });
+    await sleep(1500);
+    rpsWaiting();
   } else {
-    await sleep(1700);
+    await sleep(2200);
     $('rpsView').hidden = true;
     rpsOpenFor = null;
   }
@@ -555,7 +594,7 @@ async function receive(s) {
   if (animating) { queued = s; return; }
   const ev = s.event;
   const newRound = !state || s.round !== state.round;
-  if (newRound) { scarG.innerHTML = ''; eventMsg = null; }
+  if (newRound) eventMsg = null;
   // only animate things that happen while you're watching, not ones from before you loaded
   const fresh = ev && seenEvent !== null && ev.id !== seenEvent;
   seenEvent = ev ? ev.id : (seenEvent ?? 0);
@@ -566,7 +605,6 @@ async function receive(s) {
     if (ev.type === 'bomb') {
       onState(s, true);
       setMsg(eventMsg, true);
-      scorch(ev);
       if (!reduceMotion) await playBomb(ev);
     }
     onState(s);
