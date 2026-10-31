@@ -126,14 +126,16 @@ function placeStone(room, me, i, shield) {
   if (room.bombs.has(i)) {
     // Boom: everything within range is blown away, except shielded stones. Unshielded, the placed stone goes too and the turn passes.
     room.bombs.delete(i);
-    const radius = crypto.randomInt(100) < 25 ? 2 : 1;
+    // Blast area: a random 1x1, 2x2 or 3x3 square that always contains the bomb cell
+    const size = 1 + crypto.randomInt(3);
     const r0 = Math.floor(i / N), c0 = i % N;
+    const clamp = (v) => Math.max(0, Math.min(N - size, v));
+    const top = clamp(r0 - crypto.randomInt(size)), left = clamp(c0 - crypto.randomInt(size));
     const cleared = [];
     let saved = 0;
     if (shield) { room.board[i] = color; saved++; } else cleared.push([i, color]);
-    for (let r = r0 - radius; r <= r0 + radius; r++) {
-      for (let c = c0 - radius; c <= c0 + radius; c++) {
-        if (r < 0 || r >= N || c < 0 || c >= N) continue;
+    for (let r = top; r < top + size; r++) {
+      for (let c = left; c < left + size; c++) {
         const j = r * N + c;
         if (j === i || !room.board[j]) continue;
         if (room.shielded.has(j)) { saved++; continue; }
@@ -141,7 +143,7 @@ function placeStone(room, me, i, shield) {
       }
     }
     room.eventSeq = (room.eventSeq || 0) + 1;
-    room.event = { id: room.eventSeq, type: 'bomb', at: i, radius, by: me.id, cleared, saved, shieldedHit: shield };
+    room.event = { id: room.eventSeq, type: 'bomb', at: i, area: { top, left, size }, by: me.id, cleared, saved, shieldedHit: shield };
     room.lastMove = shield ? i : -1;
     if (!shield) { room.turn = next; return; }
   } else {
@@ -207,7 +209,7 @@ wss.on('connection', (ws) => {
         const i = msg.index | 0;
         if (room.turn !== color || i < 0 || i >= N * N || room.board[i]) return;
         const forced = process.env.TEST_RPS === 'always'; // for local testing
-        if (forced || crypto.randomInt(RPS_CHANCE) === 0) {
+        if (process.env.TEST_RPS !== 'never' && (forced || crypto.randomInt(RPS_CHANCE) === 0)) {
           // Spook appears: win rock-paper-scissors to place this stone
           room.eventSeq = (room.eventSeq || 0) + 1;
           room.challenge = { id: room.eventSeq, by: me.id, index: i, ties: 0 };

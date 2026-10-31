@@ -173,7 +173,7 @@
     <ul class="rules">
       <li>Take turns placing stones. Line up five in a row to win.</li>
       <li>12 bombs are hidden on the board. Place a stone on one and Nimbo drops it: your stone and every stone around it get blown away, and you lose your turn.</li>
-      <li>Usually the blast clears a 3×3 area. Sometimes it's a big one: 5×5.</li>
+      <li>Each blast clears a random 1×1, 2×2 or 3×3 square around that spot.</li>
       <li>On any move there's a 1 in 6 chance Spook the ghost shows up and challenges you to rock-paper-scissors. Lose and your turn is over. Win and your stone goes down with a shining shield, and bombs can't blow it away.</li>
     </ul>
     <div class="row"><button class="btn" id="createBtn">Start a game</button></div>
@@ -425,8 +425,8 @@ function render() {
 
 // scorch marks where bombs went off this game
 function scorch(ev) {
-  const x = ev.at % N, y = Math.floor(ev.at / N), R = ev.radius;
-  el('rect', { x: x - R - .45, y: y - R - .45, width: 2 * R + .9, height: 2 * R + .9, rx: .5, fill: '#8B5A2B', opacity: .18 }, scarG);
+  const { top, left, size } = ev.area;
+  el('rect', { x: left - .45, y: top - .45, width: size - 1 + .9, height: size - 1 + .9, rx: .4, fill: '#8B5A2B', opacity: .18 }, scarG);
 }
 
 // ---------- Nimbo bomb animation ----------
@@ -470,9 +470,11 @@ async function playBomb(ev) {
   });
   bomb.remove();
   // 3. boom! Nimbo zips away while the blast clears the stones
-  const R = ev.radius + 0.6;
-  const blast = el('circle', { cx: tx, cy: ty, r: 0, fill: 'url(#gBoom)' }, fxG);
-  const ring = el('circle', { cx: tx, cy: ty, r: 0, fill: 'none', stroke: '#FF6B5B', 'stroke-width': .15 }, fxG);
+  // blast is centered on the cleared square
+  const bx = ev.area.left + (ev.area.size - 1) / 2, by = ev.area.top + (ev.area.size - 1) / 2;
+  const R = ev.area.size / 2 + 0.35;
+  const blast = el('circle', { cx: bx, cy: by, r: 0, fill: 'url(#gBoom)' }, fxG);
+  const ring = el('circle', { cx: bx, cy: by, r: 0, fill: 'none', stroke: '#FF6B5B', 'stroke-width': .15 }, fxG);
   const rays = [...Array(10)].map((_, n) => el('line', { stroke: '#FFD84D', 'stroke-width': .14, 'stroke-linecap': 'round' }, fxG));
   const endX = tx < 7 ? 18 : -4;
   await tween(650, k => {
@@ -481,8 +483,8 @@ async function playBomb(ev) {
     ring.setAttribute('r', (R + .4) * e); ring.setAttribute('opacity', 1 - k);
     rays.forEach((ln, n) => {
       const a = n / rays.length * Math.PI * 2, r1 = R * .5 * e, r2 = R * 1.3 * e;
-      ln.setAttribute('x1', tx + Math.cos(a) * r1); ln.setAttribute('y1', ty + Math.sin(a) * r1);
-      ln.setAttribute('x2', tx + Math.cos(a) * r2); ln.setAttribute('y2', ty + Math.sin(a) * r2);
+      ln.setAttribute('x1', bx + Math.cos(a) * r1); ln.setAttribute('y1', by + Math.sin(a) * r1);
+      ln.setAttribute('x2', bx + Math.cos(a) * r2); ln.setAttribute('y2', by + Math.sin(a) * r2);
       ln.setAttribute('opacity', 1 - k);
     });
     doomed.forEach(c => { c.setAttribute('r', .44 * (1 - e)); c.setAttribute('opacity', 1 - k); });
@@ -496,7 +498,7 @@ async function playBomb(ev) {
 function boomText(ev) {
   const who = ev.byYou ? 'You' : ev.byName;
   const n = ev.cleared.length;
-  const size = ev.radius === 2 ? 'a BIG bomb' : 'a bomb';
+  const size = `a ${ev.area.size}×${ev.area.size} bomb`;
   const blast = n ? `blew away ${n} ${n === 1 ? 'stone' : 'stones'}` : "couldn't blow anything away";
   let t = `Boom! ${who} hit a hidden bomb. Nimbo dropped ${size} and ${blast}.`;
   if (ev.saved) t += ` ${ev.saved} shielded ${ev.saved === 1 ? 'stone' : 'stones'} survived.`;
