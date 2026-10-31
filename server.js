@@ -6,6 +6,7 @@ const { WebSocketServer } = require('ws');
 
 const PORT = process.env.PORT || 3000;
 const N = 15; // board size
+const BOMBS = 12; // hidden bombs per game
 const PUBLIC = path.join(__dirname, 'public');
 const INDEX = path.join(PUBLIC, 'index.html');
 
@@ -52,6 +53,14 @@ function startRound(room) {
   room.reason = null;
   room.winLine = [];
   room.round += 1;
+  // Hide bombs on random empty cells (never on the center, so the opening move is safe)
+  room.bombs = new Set();
+  while (room.bombs.size < BOMBS) {
+    const i = crypto.randomInt(N * N);
+    if (i !== Math.floor(N * N / 2)) room.bombs.add(i);
+  }
+  if (process.env.TEST_BOMBS) room.bombs = new Set(process.env.TEST_BOMBS.split(',').map(Number)); // for local testing
+  room.event = null;
 }
 
 function findFive(board, idx) {
@@ -95,6 +104,10 @@ function broadcast(room) {
       youWon: room.winnerId ? room.winnerId === me.id : null,
       reason: room.reason,
       winLine: room.winLine || [],
+      bombsLeft: room.bombs ? room.bombs.size : 0,
+      // bomb positions stay secret until the game ends
+      bombs: room.status === 'finished' && room.bombs ? [...room.bombs] : [],
+      event: room.event ? { ...room.event, byYou: room.event.by === me.id, byName: room.players.get(room.event.by)?.name } : null,
     });
   }
 }
@@ -147,6 +160,25 @@ wss.on('connection', (ws) => {
         const color = colorOf(room, me.id);
         const i = msg.index | 0;
         if (room.turn !== color || i < 0 || i >= N * N || room.board[i]) return;
+        if (room.bombs.has(i)) {
+          // Boom: the placed stone and everything within range is blown away, and the turn passes.
+          room.bombs.delete(i);
+          const radius = crypto.randomInt(100) < 25 ? 2 : 1;
+          const r0 = Math.floor(i / N), c0 = i % N;
+          const cleared = [[i, color]];
+          for (let r = r0 - radius; r <= r0 + radius; r++) {
+            for (let c = c0 - radius; c <= c0 + radius; c++) {
+              if (r < 0 || r >= N || c < 0 || c >= N) continue;
+              const j = r * N + c;
+              if (room.board[j]) { cleared.push([j, room.board[j]]); room.board[j] = 0; }
+            }
+          }
+          room.eventSeq = (room.eventSeq || 0) + 1;
+          room.event = { id: room.eventSeq, type: 'bomb', at: i, radius, by: me.id, cleared };
+          room.lastMove = -1;
+          room.turn = color === 1 ? 2 : 1;
+          return broadcast(room);
+        }
         room.board[i] = color;
         room.lastMove = i;
         const line = findFive(room.board, i);
