@@ -94,6 +94,24 @@
   .overlay p { margin: 0 0 10px; line-height: 1.5; }
   .overlay .row { justify-content: center; }
   .score { font-weight: 900; font-size: 1.15rem; margin-bottom: 6px; }
+  .spookBox { text-align: center; }
+  .spookBox svg { width: 120px; height: 110px; display: block; margin: 0 auto 4px; }
+  .float { animation: bob 1.6s ease-in-out infinite; }
+  @keyframes bob { 50% { transform: translateY(-6px); } }
+  .picks { display: flex; justify-content: center; gap: 10px; margin-top: 14px; }
+  .pick { display: grid; gap: 4px; justify-items: center; width: 92px; padding: 10px 0 8px; background: var(--white); border: 3px solid var(--ink); border-radius: 14px; box-shadow: 0 4px 0 var(--ink); font-weight: 900; }
+  .pick span { font-size: 2rem; line-height: 1; }
+  .pick:disabled { opacity: .45; cursor: default; }
+  .pick.chosen { background: #FFF5C9; opacity: 1; }
+  .rpsResult { min-height: 3.2em; margin-top: 14px; font-weight: 800; line-height: 1.5; }
+  .rpsResult .big { font-family: 'Press Start 2P', monospace; font-size: .9rem; display: block; margin-top: 6px; }
+  .rpsResult.win .big { color: var(--grass-dark); }
+  .rpsResult.lose .big { color: var(--boom); }
+  .shine { animation: shine 1.4s ease-in-out infinite; }
+  @keyframes shine { 50% { opacity: .35; } }
+  .twinkle { transform-box: fill-box; transform-origin: center; animation: twinkle 1.4s ease-in-out infinite; }
+  @keyframes twinkle { 0%, 100% { transform: scale(.6) rotate(0deg); } 50% { transform: scale(1.15) rotate(45deg); } }
+  @media (prefers-reduced-motion: reduce) { .float, .shine, .twinkle { animation: none; } }
   .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--white); padding: 10px 16px; border-radius: 10px; z-index: 9; font-weight: 800; }
   [hidden] { display: none !important; }
   @media (max-width: 420px) { .brand h1 { font-size: .85rem; } .brand svg { width: 52px; } }
@@ -113,6 +131,14 @@
       <circle cx="-.3" cy="0" r=".13" fill="#2B2B48"/><circle cx=".3" cy="0" r=".13" fill="#2B2B48"/>
       <circle cx="-.26" cy="-.05" r=".045" fill="#fff"/><circle cx=".34" cy="-.05" r=".045" fill="#fff"/>
       <path d="M-.14 .2 Q0 .34 .14 .2" fill="none" stroke="#2B2B48" stroke-width=".06" stroke-linecap="round"/>
+    </g>
+    <g id="spook">
+      <path d="M-1 .9 V-.1 A1 1 0 0 1 1 -.1 V.9 Q.83 .7 .66 .9 Q.5 1.1 .33 .9 Q.17 .7 0 .9 Q-.17 1.1 -.33 .9 Q-.5 .7 -.66 .9 Q-.83 1.1 -1 .9 Z" fill="#CFF5E7" stroke="#2B2B48" stroke-width=".07" stroke-linejoin="round"/>
+      <ellipse cx="-.32" cy="-.15" rx=".13" ry=".19" fill="#2B2B48"/><ellipse cx=".32" cy="-.15" rx=".13" ry=".19" fill="#2B2B48"/>
+      <circle cx="-.28" cy="-.22" r=".05" fill="#fff"/><circle cx=".36" cy="-.22" r=".05" fill="#fff"/>
+      <ellipse cx="0" cy=".18" rx=".09" ry=".11" fill="#2B2B48"/>
+      <path d="M-.22 .48 L-.02 .56 L-.22 .64 Z M.22 .48 L.02 .56 L.22 .64 Z" fill="#FF6B5B" stroke="#2B2B48" stroke-width=".04" stroke-linejoin="round"/>
+      <circle cx="0" cy=".56" r=".05" fill="#FF6B5B" stroke="#2B2B48" stroke-width=".03"/>
     </g>
     <g id="bomb">
       <circle r=".34" fill="#2B2B48"/><circle cx="-.1" cy="-.12" r=".08" fill="#fff" opacity=".6"/>
@@ -148,6 +174,7 @@
       <li>Take turns placing stones. Line up five in a row to win.</li>
       <li>12 bombs are hidden on the board. Place a stone on one and Nimbo drops it: your stone and every stone around it get blown away, and you lose your turn.</li>
       <li>Usually the blast clears a 3×3 area. Sometimes it's a big one: 5×5.</li>
+      <li>On any move there's a 1 in 6 chance Spook the ghost shows up and challenges you to rock-paper-scissors. Lose and your turn is over. Win and your stone goes down with a shining shield, and bombs can't blow it away.</li>
     </ul>
     <div class="row"><button class="btn" id="createBtn">Start a game</button></div>
   </section>
@@ -203,6 +230,20 @@
   </div>
 </div>
 
+<div class="overlay" id="rpsView" hidden>
+  <div class="box spookBox" role="dialog" aria-labelledby="rpsTitle">
+    <svg class="float" viewBox="-1.3 -1.3 2.6 2.5" aria-hidden="true"><use href="#spook"/></svg>
+    <h2 id="rpsTitle">Spook appears!</h2>
+    <p id="rpsIntro">Beat me at rock-paper-scissors and your stone gets a shield. Lose, and your turn is over.</p>
+    <div class="picks">
+      <button class="pick" data-pick="rock"><span>✊</span>Rock</button>
+      <button class="pick" data-pick="paper"><span>✋</span>Paper</button>
+      <button class="pick" data-pick="scissors"><span>✌️</span>Scissors</button>
+    </div>
+    <div class="rpsResult" id="rpsResult" aria-live="polite"></div>
+  </div>
+</div>
+
 <div class="toast" id="toast" hidden></div>
 
 <script>
@@ -219,7 +260,9 @@ if (!clientId) { clientId = crypto.randomUUID ? crypto.randomUUID() : String(Mat
 let myName = store.get('gm_name');
 let roomId = new URLSearchParams(location.search).get('room');
 let state = null, ws = null, pending = [], dismissedRound = -1, cursor = 112;
-let seenEvent = null, animating = false, queued = null, boomMsg = null;
+let seenEvent = null, animating = false, queued = null, eventMsg = null, rpsOpenFor = null;
+const EMOJI = { rock: '✊', paper: '✋', scissors: '✌️' };
+const cap = (t) => t[0].toUpperCase() + t.slice(1);
 
 const views = ['nameView', 'homeView', 'waitView', 'errView', 'gameView'];
 function show(id) { views.forEach(v => $(v).hidden = v !== id); $('renameBtn').hidden = !myName || id === 'nameView'; }
@@ -318,7 +361,7 @@ for (let i = 0; i < N * N; i++) {
 
 function place(i) {
   const s = state;
-  if (!s || !s.yourTurn || s.board[i] || animating) return;
+  if (!s || !s.yourTurn || s.board[i] || animating || s.challenge) return;
   cursor = i;
   sendMsg({ type: 'move', index: i });
 }
@@ -351,6 +394,20 @@ function render() {
     }
   });
   prevLast = s.lastMove;
+  // shielded stones shine and can't be blown away
+  for (const i of s.shielded || []) {
+    if (!s.board[i]) continue;
+    const x = i % N, y = Math.floor(i / N);
+    el('circle', { cx: x, cy: y, r: 0.5, fill: 'none', stroke: '#FFD84D', 'stroke-width': 0.1, class: 'shine' }, markG);
+    el('path', { d: `M${x + .42} ${y - .72} L${x + .5} ${y - .5} L${x + .72} ${y - .42} L${x + .5} ${y - .34} L${x + .42} ${y - .12} L${x + .34} ${y - .34} L${x + .12} ${y - .42} L${x + .34} ${y - .5} Z`, fill: '#FFD84D', stroke: '#B8860B', 'stroke-width': .03, class: 'twinkle' }, markG);
+  }
+  // pending rock-paper-scissors: show the stone waiting to be placed, with Spook hovering over it
+  if (s.challenge) {
+    const x = s.challenge.index % N, y = Math.floor(s.challenge.index / N);
+    const owner = s.challenge.forYou ? s.myColor : (s.myColor === 1 ? 2 : 1);
+    el('circle', { cx: x, cy: y, r: 0.44, fill: stoneFill(owner), opacity: .45 }, markG);
+    el('use', { href: '#spook', transform: `translate(${x} ${Math.max(-.3, y - 1.25)}) scale(.55)` }, markG);
+  }
   if (s.lastMove >= 0 && !s.winLine.length) el('circle', { cx: s.lastMove % N, cy: Math.floor(s.lastMove / N), r: 0.11, fill: '#FF6B5B' }, markG);
   if (s.winLine.length) {
     const pts = s.winLine.map(i => [i % N, Math.floor(i / N)]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
@@ -362,7 +419,7 @@ function render() {
     el('use', { href: '#bomb', transform: `translate(${i % N} ${Math.floor(i / N)}) scale(.75)`, opacity: .8 }, markG);
   }
   ghosts.forEach((g, i) => g.setAttribute('fill', s.board[i] ? 'none' : stoneFill(s.myColor)));
-  svg.classList.toggle('canplay', !!s.yourTurn && !animating);
+  svg.classList.toggle('canplay', !!s.yourTurn && !animating && !s.challenge);
   drawCursor();
 }
 
@@ -390,7 +447,6 @@ async function playBomb(ev) {
   svg.classList.remove('canplay');
   const tx = ev.at % N, ty = Math.floor(ev.at / N);
   const flyY = Math.max(-0.4, ty - 2.4);
-  setMsg(boomText(ev), true);
 
   // Stones about to be blown away (already gone from the board state)
   const doomed = ev.cleared.map(([i, v]) => {
@@ -441,8 +497,55 @@ function boomText(ev) {
   const who = ev.byYou ? 'You' : ev.byName;
   const n = ev.cleared.length;
   const size = ev.radius === 2 ? 'a BIG bomb' : 'a bomb';
-  return `Boom! ${who} hit a hidden bomb. Nimbo dropped ${size} and blew away ${n} ${n === 1 ? 'stone' : 'stones'}.`;
+  const blast = n ? `blew away ${n} ${n === 1 ? 'stone' : 'stones'}` : "couldn't blow anything away";
+  let t = `Boom! ${who} hit a hidden bomb. Nimbo dropped ${size} and ${blast}.`;
+  if (ev.saved) t += ` ${ev.saved} shielded ${ev.saved === 1 ? 'stone' : 'stones'} survived.`;
+  if (ev.rps) t = `${who} beat Spook at rock-paper-scissors. ` + t;
+  return t;
 }
+function describe(ev) {
+  if (ev.type === 'bomb') return boomText(ev);
+  const who = ev.byYou ? 'You' : ev.byName;
+  if (ev.outcome === 'tie') return `${who} tied with Spook. ${ev.byYou ? 'Pick again!' : 'Spook wants a rematch…'}`;
+  if (ev.outcome === 'lose') return `Spook threw ${ev.ghost} and beat ${ev.byYou ? 'you' : ev.byName}. ${ev.byYou ? 'Your' : 'Their'} turn is over.`;
+  return `${who} beat Spook! ${ev.byYou ? 'Your' : 'Their'} stone is shielded from bombs.`;
+}
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// ---------- Spook's rock-paper-scissors ----------
+document.querySelectorAll('.pick').forEach(b => b.onclick = () => {
+  if (!state?.challenge?.forYou || animating) return;
+  document.querySelectorAll('.pick').forEach(x => { x.disabled = true; x.classList.toggle('chosen', x === b); });
+  $('rpsResult').className = 'rpsResult'; $('rpsResult').textContent = 'Spook is thinking…';
+  sendMsg({ type: 'rps', pick: b.dataset.pick });
+});
+function openRps(ch) {
+  if (rpsOpenFor === ch.id) return;
+  rpsOpenFor = ch.id;
+  $('rpsTitle').textContent = 'Spook appears!';
+  $('rpsResult').className = 'rpsResult'; $('rpsResult').textContent = '';
+  document.querySelectorAll('.pick').forEach(x => { x.disabled = false; x.classList.remove('chosen'); });
+  $('rpsView').hidden = false;
+  document.querySelector('.pick').focus();
+}
+async function rpsReveal(r) {
+  animating = true;
+  const res = $('rpsResult');
+  const head = r.outcome === 'tie' ? "It's a tie! Pick again." : r.outcome === 'win' ? 'You win! Your stone is shielded.' : 'Spook wins. Your turn is over.';
+  res.className = 'rpsResult ' + r.outcome;
+  res.innerHTML = `You ${EMOJI[r.pick]} ${cap(r.pick)} vs Spook ${EMOJI[r.ghost]} ${cap(r.ghost)}<span class="big"></span>`;
+  res.querySelector('.big').textContent = head;
+  if (r.outcome === 'tie') {
+    await sleep(900);
+    document.querySelectorAll('.pick').forEach(x => { x.disabled = false; x.classList.remove('chosen'); });
+  } else {
+    await sleep(1700);
+    $('rpsView').hidden = true;
+    rpsOpenFor = null;
+  }
+  animating = false;
+}
+
 function setMsg(t, boom) { const m = $('status'); m.textContent = t; m.className = 'msg' + (boom ? ' boom' : ''); }
 
 // ---------- state ----------
@@ -450,20 +553,25 @@ async function receive(s) {
   if (animating) { queued = s; return; }
   const ev = s.event;
   const newRound = !state || s.round !== state.round;
-  if (newRound) { scarG.innerHTML = ''; boomMsg = null; }
-  // only animate explosions that happen while you're watching, not ones from before you loaded
+  if (newRound) { scarG.innerHTML = ''; eventMsg = null; }
+  // only animate things that happen while you're watching, not ones from before you loaded
   const fresh = ev && seenEvent !== null && ev.id !== seenEvent;
   seenEvent = ev ? ev.id : (seenEvent ?? 0);
   if (fresh) {
-    onState(s, true);
-    boomMsg = boomText(ev);
-    scorch(ev);
-    if (!reduceMotion) await playBomb(ev);
+    const rps = ev.type === 'rps' ? ev : ev.rps ? { ...ev.rps } : null;
+    if (rps && ev.byYou && !$('rpsView').hidden) await rpsReveal(rps);
+    eventMsg = describe(ev);
+    if (ev.type === 'bomb') {
+      onState(s, true);
+      setMsg(eventMsg, true);
+      scorch(ev);
+      if (!reduceMotion) await playBomb(ev);
+    }
     onState(s);
     if (queued) { const q = queued; queued = null; receive(q); }
     return;
   }
-  if (s.lastMove >= 0) boomMsg = null;
+  if (s.lastMove !== state?.lastMove && s.lastMove >= 0) eventMsg = null;
   onState(s);
 }
 
@@ -494,10 +602,17 @@ function onState(s, quiet) {
   $('bombCount').textContent = playing ? `Hidden bombs left: ${s.bombsLeft}` : `Unexploded bombs: ${s.bombsLeft}`;
   $('roundLbl').textContent = `Game ${s.round}`;
 
+  if (s.challenge && s.challenge.forYou && playing) openRps(s.challenge);
+  else if (!animating) { $('rpsView').hidden = true; rpsOpenFor = null; }
+
   if (!quiet) {
-    if (playing) {
+    if (playing && s.challenge && !s.challenge.forYou) {
+      setMsg(`Spook popped up! ${s.challenge.byName} is playing rock-paper-scissors…`);
+    } else if (playing && s.challenge) {
+      setMsg('Spook challenged you to rock-paper-scissors!');
+    } else if (playing) {
       const turnText = s.yourTurn ? 'Your turn!' : `Waiting for ${o ? o.name : 'opponent'}${o && !o.online ? ' (offline)' : ''}…`;
-      if (boomMsg) setMsg(`${boomMsg} ${turnText}`, true); else setMsg(turnText);
+      if (eventMsg) setMsg(`${eventMsg} ${turnText}`, true); else setMsg(turnText);
     } else {
       setMsg(s.reason === 'draw' ? "It's a draw." : (s.youWon ? 'You won!' : `${s.winner} won.`));
     }

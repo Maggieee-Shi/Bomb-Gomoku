@@ -7,6 +7,9 @@ const { WebSocketServer } = require('ws');
 const PORT = process.env.PORT || 3000;
 const N = 15; // board size
 const BOMBS = 12; // hidden bombs per game
+const RPS_CHANCE = 6; // Spook challenges 1 in this many moves
+const PICKS = ['rock', 'paper', 'scissors'];
+const BEATS = { rock: 'scissors', paper: 'rock', scissors: 'paper' };
 const PUBLIC = path.join(__dirname, 'public');
 const INDEX = path.join(PUBLIC, 'index.html');
 
@@ -61,6 +64,8 @@ function startRound(room) {
   }
   if (process.env.TEST_BOMBS) room.bombs = new Set(process.env.TEST_BOMBS.split(',').map(Number)); // for local testing
   room.event = null;
+  room.shielded = new Set();
+  room.challenge = null;
 }
 
 function findFive(board, idx) {
@@ -107,8 +112,49 @@ function broadcast(room) {
       bombsLeft: room.bombs ? room.bombs.size : 0,
       // bomb positions stay secret until the game ends
       bombs: room.status === 'finished' && room.bombs ? [...room.bombs] : [],
+      shielded: room.shielded ? [...room.shielded] : [],
+      challenge: room.challenge ? { id: room.challenge.id, forYou: room.challenge.by === me.id, byName: room.players.get(room.challenge.by)?.name, index: room.challenge.index, ties: room.challenge.ties } : null,
       event: room.event ? { ...room.event, byYou: room.event.by === me.id, byName: room.players.get(room.event.by)?.name } : null,
     });
+  }
+}
+
+function placeStone(room, me, i, shield) {
+  const color = colorOf(room, me.id);
+  const next = color === 1 ? 2 : 1;
+  if (shield) room.shielded.add(i);
+  if (room.bombs.has(i)) {
+    // Boom: everything within range is blown away, except shielded stones. Unshielded, the placed stone goes too and the turn passes.
+    room.bombs.delete(i);
+    const radius = crypto.randomInt(100) < 25 ? 2 : 1;
+    const r0 = Math.floor(i / N), c0 = i % N;
+    const cleared = [];
+    let saved = 0;
+    if (shield) { room.board[i] = color; saved++; } else cleared.push([i, color]);
+    for (let r = r0 - radius; r <= r0 + radius; r++) {
+      for (let c = c0 - radius; c <= c0 + radius; c++) {
+        if (r < 0 || r >= N || c < 0 || c >= N) continue;
+        const j = r * N + c;
+        if (j === i || !room.board[j]) continue;
+        if (room.shielded.has(j)) { saved++; continue; }
+        cleared.push([j, room.board[j]]); room.board[j] = 0;
+      }
+    }
+    room.eventSeq = (room.eventSeq || 0) + 1;
+    room.event = { id: room.eventSeq, type: 'bomb', at: i, radius, by: me.id, cleared, saved, shieldedHit: shield };
+    room.lastMove = shield ? i : -1;
+    if (!shield) { room.turn = next; return; }
+  } else {
+    room.board[i] = color;
+    room.lastMove = i;
+  }
+  const line = findFive(room.board, i);
+  if (line) {
+    room.status = 'finished'; room.winnerId = me.id; room.reason = 'five'; room.winLine = line; me.wins += 1;
+  } else if (room.board.every(Boolean)) {
+    room.status = 'finished'; room.reason = 'draw';
+  } else {
+    room.turn = next;
   }
 }
 
@@ -156,38 +202,35 @@ wss.on('connection', (ws) => {
         return broadcast(room);
       }
       case 'move': {
-        if (!room || !me || room.status !== 'playing') return;
+        if (!room || !me || room.status !== 'playing' || room.challenge) return;
         const color = colorOf(room, me.id);
         const i = msg.index | 0;
         if (room.turn !== color || i < 0 || i >= N * N || room.board[i]) return;
-        if (room.bombs.has(i)) {
-          // Boom: the placed stone and everything within range is blown away, and the turn passes.
-          room.bombs.delete(i);
-          const radius = crypto.randomInt(100) < 25 ? 2 : 1;
-          const r0 = Math.floor(i / N), c0 = i % N;
-          const cleared = [[i, color]];
-          for (let r = r0 - radius; r <= r0 + radius; r++) {
-            for (let c = c0 - radius; c <= c0 + radius; c++) {
-              if (r < 0 || r >= N || c < 0 || c >= N) continue;
-              const j = r * N + c;
-              if (room.board[j]) { cleared.push([j, room.board[j]]); room.board[j] = 0; }
-            }
-          }
+        const forced = process.env.TEST_RPS === 'always'; // for local testing
+        if (forced || crypto.randomInt(RPS_CHANCE) === 0) {
+          // Spook appears: win rock-paper-scissors to place this stone
           room.eventSeq = (room.eventSeq || 0) + 1;
-          room.event = { id: room.eventSeq, type: 'bomb', at: i, radius, by: me.id, cleared };
-          room.lastMove = -1;
-          room.turn = color === 1 ? 2 : 1;
+          room.challenge = { id: room.eventSeq, by: me.id, index: i, ties: 0 };
           return broadcast(room);
         }
-        room.board[i] = color;
-        room.lastMove = i;
-        const line = findFive(room.board, i);
-        if (line) {
-          room.status = 'finished'; room.winnerId = me.id; room.reason = 'five'; room.winLine = line; me.wins += 1;
-        } else if (room.board.every(Boolean)) {
-          room.status = 'finished'; room.reason = 'draw';
+        placeStone(room, me, i, false);
+        return broadcast(room);
+      }
+      case 'rps': {
+        const ch = room && room.challenge;
+        if (!ch || !me || ch.by !== me.id || room.status !== 'playing' || !PICKS.includes(msg.pick)) return;
+        const ghost = PICKS.includes(process.env.TEST_GHOST) ? process.env.TEST_GHOST : PICKS[crypto.randomInt(3)];
+        const outcome = msg.pick === ghost ? 'tie' : BEATS[msg.pick] === ghost ? 'win' : 'lose';
+        room.eventSeq += 1;
+        room.event = { id: room.eventSeq, type: 'rps', by: me.id, pick: msg.pick, ghost, outcome, index: ch.index };
+        if (outcome === 'tie') { ch.ties += 1; return broadcast(room); }
+        room.challenge = null;
+        if (outcome === 'lose') {
+          room.turn = colorOf(room, me.id) === 1 ? 2 : 1;
         } else {
-          room.turn = color === 1 ? 2 : 1;
+          placeStone(room, me, ch.index, true);
+          // if the stone landed on a bomb, the bomb event carries the rock-paper-scissors result along
+          if (room.event.type === 'bomb') room.event.rps = { pick: msg.pick, ghost, outcome };
         }
         return broadcast(room);
       }
@@ -195,6 +238,7 @@ wss.on('connection', (ws) => {
         if (!room || !me || room.status !== 'playing') return;
         const opp = other(room, me.id);
         if (!opp) return;
+        room.challenge = null;
         room.status = 'finished'; room.winnerId = opp.id; room.reason = 'concede'; opp.wins += 1;
         return broadcast(room);
       }
